@@ -27,10 +27,9 @@ extern crate reqwest;
 use std::fs::File;
 use std::io;
 use clap::*;
-use std::borrow::BorrowMut;
 
-fn get_json(subreddit:&str) -> json::JsonValue {
-   let response = reqwest::get(format!("https://www.reddit.com/r/{}/new.json?sort={}", subreddit, "new").as_str())
+fn get_json(subreddit:&str, key:&str) -> json::JsonValue {
+   let response = reqwest::get(&format!("https://www.reddit.com/r/{}/new.json?sort={}", subreddit, key))
        .expect("Could not make the request")
        .text().expect("could not read the text");
 
@@ -53,6 +52,7 @@ fn get_filetype(post_image_url:&str) -> String {
    vec[vec.len() -1].to_string()
 }
 
+
 fn special_char_check (str_to_check:&mut String) -> String {
    let special_chars = vec!["\\", "/", "\"", "?", ":", "*", "<", ">", "|"];
 
@@ -61,15 +61,30 @@ fn special_char_check (str_to_check:&mut String) -> String {
          str_to_check.remove(str_to_check.find(char).unwrap());
       }
    }
+
    str_to_check.parse().unwrap()
 }
 
-fn download_post(subreddit:&str, index:usize) {
-   let (post_title, post_url, post_image_url) = get_post(get_json(subreddit), index);
-   let mut file_name = special_char_check(format!("{}.{}", post_title, get_filetype(&post_image_url)).borrow_mut());
-   let mut out = File::create(file_name).expect(format!("error! could not create file with name {}", post_title).as_ref());
-   io::copy(&mut reqwest::get(&post_image_url).unwrap(), &mut out).expect("error! could not write data");
+fn download_post(subreddit:&str, index:usize, key:&str) {
+   let (post_title, post_url, post_image_url) = get_post(get_json(subreddit, key), index);
+   let file_name = special_char_check(&mut format!("{}.{}", post_title, get_filetype(&post_image_url)));
+   let out = File::create(file_name);
+
+   match out {
+      Ok(mut x) => {
+         match io::copy(&mut reqwest::get(&post_image_url).unwrap(), &mut x) {
+            Ok(_) => {
+               println!("title : {}\nimage url : {}\npost url : {}\n\n", post_title, post_image_url, post_url)
+            },
+            Err(e) => { println!("\n\n\n{}", e) }
+         }
+      },
+      Err(e) => {println!("\n\n\n{}", e)},
+   };
+
+
 }
+
 fn main()  {
 
    let matches = App::new("dep-handler")
@@ -90,10 +105,23 @@ fn main()  {
               .takes_value(true)
               .value_name("count")
               .help("amount of images that you are going to download"))
+       .arg(
+      Arg::with_name("top")
+          .short("t")
+          .long("top")
+          .takes_value(false)
+          .help("sets sort key to top"))
+       .arg(
+          Arg::with_name("new")
+              .short("n")
+              .long("new")
+              .takes_value(false)
+              .help("sets sort key to new"))
        .get_matches();
 
-   let mut sub = "unket";
+   let mut sub = "dankmemes";
    let mut count = 1;
+   let mut key = "none";
 
    if matches.is_present("subreddit") {
       sub = matches.value_of("subreddit").unwrap();
@@ -101,7 +129,16 @@ fn main()  {
    if matches.is_present("count") {
       count = matches.value_of("count").unwrap().parse().unwrap();
    }
+   if matches.is_present("new") {
+      key = "new"
+   }
+   if matches.is_present("top") {
+      key = "top"
+   }
 
-   download_post(sub, count);
+
+   for c in 0..count{
+      download_post(sub, c, key)
+   }
 
 }
